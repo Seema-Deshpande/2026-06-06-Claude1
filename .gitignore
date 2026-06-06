@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Environment variables (never commit secrets)
+.env
+.env.*
+!.env.example
+
+# Build output
+dist/
+
+# macOS
+.DS_Store
+
+# IDE
+.vscode/
+
+# Test coverage
+coverage/

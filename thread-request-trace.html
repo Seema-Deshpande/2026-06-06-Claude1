@@ -1,0 +1,915 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ThreadHive — Create Thread Request Trace</title>
+<style>
+  :root {
+    --fe: #3b82f6;       /* frontend blue */
+    --fe-light: #dbeafe;
+    --net: #f59e0b;      /* network amber */
+    --net-light: #fef3c7;
+    --be: #10b981;       /* backend green */
+    --be-light: #d1fae5;
+    --db: #8b5cf6;       /* database purple */
+    --db-light: #ede9fe;
+    --err: #ef4444;      /* error red */
+    --err-light: #fee2e2;
+    --bg: #0f172a;
+    --surface: #1e293b;
+    --border: #334155;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --code-bg: #0d1117;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    padding: 24px 16px 60px;
+  }
+
+  h1 {
+    text-align: center;
+    font-size: 1.6rem;
+    font-weight: 700;
+    margin-bottom: 4px;
+    color: #f8fafc;
+  }
+  .subtitle {
+    text-align: center;
+    color: var(--muted);
+    font-size: 0.9rem;
+    margin-bottom: 32px;
+  }
+
+  /* Legend */
+  .legend {
+    display: flex;
+    gap: 20px;
+    justify-content: center;
+    flex-wrap: wrap;
+    margin-bottom: 36px;
+  }
+  .legend-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .legend-dot {
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  /* Layout */
+  .layout {
+    display: grid;
+    grid-template-columns: 1fr 48px 1fr;
+    max-width: 1100px;
+    margin: 0 auto;
+    gap: 0;
+  }
+
+  .col-label {
+    text-align: center;
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    padding: 6px 12px;
+    border-radius: 6px;
+    margin-bottom: 12px;
+    width: fit-content;
+    margin-left: auto;
+    margin-right: auto;
+  }
+  .col-label.fe { background: var(--fe-light); color: #1d4ed8; }
+  .col-label.be { background: var(--be-light); color: #065f46; }
+
+  .col-header {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: 12px;
+  }
+  .col-header-mid {
+    display: flex;
+    align-items: flex-end;
+    justify-content: center;
+    padding-bottom: 12px;
+  }
+
+  /* Step cards */
+  .step {
+    position: relative;
+    margin-bottom: 8px;
+    border-radius: 10px;
+    border: 1.5px solid var(--border);
+    background: var(--surface);
+    cursor: pointer;
+    transition: all 0.18s ease;
+    overflow: hidden;
+  }
+  .step:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(0,0,0,0.4); }
+  .step.active { box-shadow: 0 0 0 2px var(--accent-color); }
+
+  .step-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 14px;
+  }
+  .step-number {
+    width: 26px; height: 26px;
+    border-radius: 50%;
+    font-size: 0.75rem;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: #fff;
+  }
+  .step-title { font-size: 0.88rem; font-weight: 600; flex: 1; }
+  .step-file { font-size: 0.72rem; color: var(--muted); font-family: monospace; }
+  .step-arrow { font-size: 0.75rem; color: var(--muted); transition: transform 0.2s; }
+  .step.active .step-arrow { transform: rotate(180deg); }
+
+  .step-body {
+    display: none;
+    padding: 0 14px 14px;
+    border-top: 1px solid var(--border);
+  }
+  .step.active .step-body { display: block; }
+
+  .step-desc {
+    font-size: 0.82rem;
+    color: var(--muted);
+    margin: 10px 0 10px;
+    line-height: 1.6;
+  }
+
+  pre {
+    background: var(--code-bg);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 12px;
+    font-size: 0.75rem;
+    line-height: 1.6;
+    overflow-x: auto;
+    color: #e2e8f0;
+    white-space: pre;
+  }
+  .code-label {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+
+  /* Syntax highlight tokens */
+  .kw { color: #ff79c6; }
+  .fn { color: #50fa7b; }
+  .str { color: #f1fa8c; }
+  .cm { color: #6272a4; font-style: italic; }
+  .prop { color: #8be9fd; }
+  .num { color: #bd93f9; }
+  .op { color: #ff79c6; }
+
+  /* Connector column */
+  .connector-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 50px;
+    gap: 0;
+  }
+
+  /* HTTP arrow block */
+  .http-arrow {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 10px 0;
+  }
+  .http-line {
+    width: 2px;
+    background: linear-gradient(to bottom, var(--net), var(--net));
+    flex: 1;
+    min-height: 20px;
+  }
+  .http-badge {
+    background: var(--net);
+    color: #000;
+    font-size: 0.65rem;
+    font-weight: 800;
+    padding: 3px 8px;
+    border-radius: 4px;
+    white-space: nowrap;
+    text-align: center;
+    line-height: 1.4;
+    margin: 4px 0;
+  }
+  .http-arrow-icon {
+    font-size: 1rem;
+    color: var(--net);
+    margin: 2px 0;
+  }
+
+  /* Connector dashed vertical line between steps */
+  .vline {
+    width: 2px;
+    background: var(--border);
+    flex: 1;
+    min-height: 8px;
+  }
+
+  /* Return path */
+  .return-section {
+    max-width: 1100px;
+    margin: 20px auto 0;
+    padding: 20px;
+    background: var(--surface);
+    border: 1.5px solid var(--border);
+    border-radius: 10px;
+  }
+  .return-title {
+    font-size: 1rem;
+    font-weight: 700;
+    margin-bottom: 16px;
+    color: #f8fafc;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .return-flow {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  .rf-box {
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    flex: 1;
+    min-width: 140px;
+    text-align: center;
+    cursor: pointer;
+    transition: opacity 0.15s;
+    border: 1.5px solid transparent;
+  }
+  .rf-box:hover { opacity: 0.85; }
+  .rf-arrow {
+    font-size: 1.2rem;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+
+  /* Color themes per layer */
+  .fe-theme { --accent-color: var(--fe); }
+  .fe-theme .step-number { background: var(--fe); }
+  .fe-theme .step-header { border-left: 3px solid var(--fe); }
+
+  .net-theme { --accent-color: var(--net); }
+  .net-theme .step-number { background: var(--net); color: #000; }
+  .net-theme .step-header { border-left: 3px solid var(--net); }
+
+  .be-theme { --accent-color: var(--be); }
+  .be-theme .step-number { background: var(--be); color: #000; }
+  .be-theme .step-header { border-left: 3px solid var(--be); }
+
+  .db-theme { --accent-color: var(--db); }
+  .db-theme .step-number { background: var(--db); }
+  .db-theme .step-header { border-left: 3px solid var(--db); }
+
+  .err-theme { --accent-color: var(--err); }
+  .err-theme .step-number { background: var(--err); }
+  .err-theme .step-header { border-left: 3px solid var(--err); }
+
+  /* Tags */
+  .tag {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-left: 6px;
+    vertical-align: middle;
+  }
+  .tag-fe { background: var(--fe-light); color: #1d4ed8; }
+  .tag-be { background: var(--be-light); color: #065f46; }
+  .tag-db { background: var(--db-light); color: #5b21b6; }
+  .tag-net { background: var(--net-light); color: #92400e; }
+
+  /* Error path note */
+  .error-note {
+    background: #2d1c1c;
+    border: 1px solid #7f1d1d;
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 0.78rem;
+    color: #fca5a5;
+    margin-top: 8px;
+  }
+  .error-note strong { color: #ef4444; }
+
+  /* Data payload visualizer */
+  .data-box {
+    background: #111827;
+    border: 1px solid #374151;
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin-top: 8px;
+  }
+  .data-box-label {
+    font-size: 0.68rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    margin-bottom: 6px;
+  }
+  .data-box-label.req { color: var(--net); }
+  .data-box-label.res { color: var(--be); }
+  .data-kv { font-size: 0.77rem; font-family: monospace; line-height: 1.7; }
+  .data-key { color: #8be9fd; }
+  .data-val { color: #f1fa8c; }
+  .data-val.str::before { content: '"'; }
+  .data-val.str::after  { content: '"'; }
+
+  /* Responsive */
+  @media (max-width: 700px) {
+    .layout { grid-template-columns: 1fr; }
+    .connector-col { display: none; }
+    .col-right { border-top: 2px dashed var(--border); margin-top: 16px; padding-top: 16px; }
+  }
+
+  .hint {
+    text-align: center;
+    font-size: 0.8rem;
+    color: var(--muted);
+    margin-bottom: 24px;
+  }
+
+  /* Phase markers */
+  .phase-bar {
+    max-width: 1100px;
+    margin: 0 auto 10px;
+    display: flex;
+    gap: 8px;
+  }
+  .phase {
+    flex: 1;
+    text-align: center;
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 5px;
+    border-radius: 4px;
+  }
+  .phase.fe { background: var(--fe); color: #fff; }
+  .phase.net { background: var(--net); color: #000; }
+  .phase.be { background: var(--be); color: #000; }
+  .phase.db { background: var(--db); color: #fff; }
+</style>
+</head>
+<body>
+
+<h1>ThreadHive — Create Thread: Full Request Trace</h1>
+<p class="subtitle">Click any step to expand the code and explanation</p>
+
+<div class="legend">
+  <div class="legend-item"><div class="legend-dot" style="background:var(--fe)"></div> Frontend (React/Redux)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--net)"></div> Network (HTTP)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--be)"></div> Backend (Express)</div>
+  <div class="legend-item"><div class="legend-dot" style="background:var(--db)"></div> Database (MongoDB)</div>
+</div>
+
+<p class="hint">Steps are ordered top-to-bottom. Left column = frontend, right column = backend.</p>
+
+<!-- ═══════════════════ MAIN LAYOUT ═══════════════════ -->
+<div class="layout">
+
+  <!-- LEFT: Frontend -->
+  <div class="col-left">
+    <div class="col-header"><span class="col-label fe">Frontend — React App</span></div>
+
+    <!-- Step 1 -->
+    <div class="step fe-theme" onclick="toggle(this)">
+      <div class="step-header">
+        <div class="step-number">1</div>
+        <div>
+          <div class="step-title">User submits the form</div>
+          <div class="step-file">CreateThreadForm.jsx — handleSubmit()</div>
+        </div>
+        <div class="step-arrow">▼</div>
+      </div>
+      <div class="step-body">
+        <div class="step-desc">
+          The user fills in <em>title</em>, <em>content</em>, and picks a community, then clicks "Post Thread".
+          React calls <code>handleSubmit(e)</code>, which calls <code>e.preventDefault()</code> to stop the
+          browser's default form POST, then reads the three local state values.
+        </div>
+        <div class="code-label">CreateThreadForm.jsx:39–85</div>
+        <pre><span class="kw">const</span> <span class="fn">handleSubmit</span> = <span class="kw">async</span> (e) => {
+  e.<span class="fn">preventDefault</span>();
+
+  <span class="cm">// ...optional: create subreddit first if user typed a new one</span>
+
+  <span class="kw">const</span> resultAction = <span class="kw">await</span> dispatch(
+    <span class="fn">createThreadThunk</span>({ title, content, subreddit: subredditToUse })
+  );
+
+  <span class="kw">if</span> (<span class="fn">createThreadThunk.fulfilled.match</span>(resultAction)) {
+    <span class="fn">onClose</span>(); <span class="cm">// close modal on success</span>
+  } <span class="kw">else</span> {
+    <span class="fn">alert</span>(<span class="str">"Failed to create thread. Please try again."</span>);
+  }
+};</pre>
+        <div class="data-box">
+          <div class="data-box-label req">Data dispatched to Redux</div>
+          <div class="data-kv">
+            <span class="data-key">title</span>: <span class="data-val str">My first thread</span><br>
+            <span class="data-key">content</span>: <span class="data-val str">Here is the content...</span><br>
+            <span class="data-key">subreddit</span>: <span class="data-val str">684a12f3c...</span> <span style="color:var(--muted);font-size:0.7rem">(MongoDB _id)</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 2 -->
+    <div class="step fe-theme" onclick="toggle(this)">
+      <div class="step-header">
+        <div class="step-number">2</div>
+        <div>
+          <div class="step-title">Redux Thunk fires</div>
+          <div class="step-file">threadListSlice.js — createThreadThunk</div>
+        </div>
+        <div class="step-arrow">▼</div>
+      </div>
+      <div class="step-body">
+        <div class="step-desc">
+          <code>createThreadThunk</code> is a Redux Toolkit <em>async thunk</em>.
+          Redux automatically dispatches a <code>threads/createThread/pending</code> action, then calls the
+          async function. If it resolves, <code>fulfilled</code> fires; if it throws, <code>rejected</code>
+          fires. On <strong>401</strong> errors the frontend utility clears localStorage and redirects to <code>/login</code>.
+        </div>
+        <div class="code-label">threadListSlice.js:30–40</div>
+        <pre><span class="kw">export const</span> <span class="prop">createThreadThunk</span> = <span class="fn">createAsyncThunk</span>(
+  <span class="str">"threads/createThread"</span>,
+  <span class="kw">async</span> (data, thunkAPI) => {
+    <span class="kw">try</span> {
+      <span class="kw">const</span> newThread = <span class="kw">await</span> <span class="fn">createThread</span>(data); <span class="cm">// service call</span>
+      <span class="kw">return</span> newThread;
+    } <span class="kw">catch</span> (err) {
+      <span class="kw">return</span> thunkAPI.<span class="fn">rejectWithValue</span>(<span class="fn">handleApiError</span>(err));
+    }
+  }
+);</pre>
+        <div class="code-label">threadListSlice.js — reducer (on success)</div>
+        <pre><span class="fn">.addCase</span>(createThreadThunk.fulfilled, (state, action) => {
+  state.threads.<span class="fn">unshift</span>(action.payload); <span class="cm">// prepend to list</span>
+})</pre>
+      </div>
+    </div>
+
+    <!-- Step 3 -->
+    <div class="step fe-theme" onclick="toggle(this)">
+      <div class="step-header">
+        <div class="step-number">3</div>
+        <div>
+          <div class="step-title">Service builds the HTTP request</div>
+          <div class="step-file">threadService.js + axiosInstance.js + apiConfig.js</div>
+        </div>
+        <div class="step-arrow">▼</div>
+      </div>
+      <div class="step-body">
+        <div class="step-desc">
+          <code>createThread()</code> reads the JWT from <code>localStorage</code> and attaches it as an
+          <code>Authorization: Bearer &lt;token&gt;</code> header. The base URL is hardcoded in
+          <code>axiosInstance.js</code> as <code>http://localhost:3000/api</code>.
+          The endpoint path <code>/threads</code> comes from <code>apiConfig.js</code>.
+        </div>
+        <div class="code-label">threadService.js:23–28</div>
+        <pre><span class="kw">const</span> <span class="fn">getAuthHeaders</span> = () => {
+  <span class="kw">const</span> token = localStorage.<span class="fn">getItem</span>(<span class="str">"token"</span>);
+  <span class="kw">return</span> token ? { <span class="prop">Authorization</span>: <span class="str">`Bearer ${token}`</span> } : {};
+};
+
+<span class="kw">export const</span> <span class="fn">createThread</span> = <span class="kw">async</span> (data) => {
+  <span class="kw">const</span> res = <span class="kw">await</span> axiosInstance.<span class="fn">post</span>(
+    THREAD_API.CREATE, <span class="cm">// "/threads"</span>
+    data,
+    { <span class="prop">headers</span>: <span class="fn">getAuthHeaders</span>() }
+  );
+  <span class="kw">return</span> res.data.data; <span class="cm">// unwrap the nested "data" key</span>
+};</pre>
+        <div class="data-box">
+          <div class="data-box-label req">HTTP Request being sent</div>
+          <div class="data-kv">
+            <span class="data-key">Method</span>: <span class="data-val" style="color:#50fa7b">POST</span><br>
+            <span class="data-key">URL</span>: <span class="data-val str">http://localhost:3000/api/threads</span><br>
+            <span class="data-key">Authorization</span>: <span class="data-val str">Bearer eyJhbGci...</span><br>
+            <span class="data-key">Content-Type</span>: <span class="data-val str">application/json</span><br>
+            <span class="data-key">Body</span>: <span class="data-val">{ title, content, subreddit }</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- end col-left -->
+
+  <!-- MIDDLE: connector -->
+  <div class="connector-col">
+    <div style="height:120px"></div>
+    <div class="vline" style="flex:1;min-height:60px"></div>
+    <div class="http-arrow">
+      <div class="http-line" style="min-height:30px"></div>
+      <div class="http-badge">POST<br>/api/threads</div>
+      <div class="http-arrow-icon">▼</div>
+      <div class="http-line" style="min-height:30px"></div>
+    </div>
+    <div class="vline" style="flex:1;min-height:60px"></div>
+    <div class="http-arrow" style="margin-top:auto">
+      <div class="http-line" style="min-height:30px"></div>
+      <div class="http-badge" style="background:#10b981;color:#000;">201<br>Created</div>
+      <div class="http-arrow-icon" style="color:var(--be)">▲</div>
+      <div class="http-line" style="min-height:30px"></div>
+    </div>
+    <div class="vline" style="flex:1;min-height:60px"></div>
+  </div>
+
+  <!-- RIGHT: Backend -->
+  <div class="col-right">
+    <div class="col-header"><span class="col-label be">Backend — Express + MongoDB</span></div>
+
+    <!-- Step 4 -->
+    <div class="step be-theme" onclick="toggle(this)">
+      <div class="step-header">
+        <div class="step-number">4</div>
+        <div>
+          <div class="step-title">Express global middleware stack</div>
+          <div class="step-file">src/app.js</div>
+        </div>
+        <div class="step-arrow">▼</div>
+      </div>
+      <div class="step-body">
+        <div class="step-desc">
+          Every incoming request passes through the middleware chain in order before reaching any route.
+          <strong>Helmet</strong> sets security headers. <strong>Rate limiter</strong> rejects if the IP
+          has exceeded 100 requests in 15 minutes. <strong>CORS</strong> allows the frontend origin.
+          <strong>express.json()</strong> parses the JSON body into <code>req.body</code>.
+        </div>
+        <div class="code-label">src/app.js — middleware order</div>
+        <pre>app.<span class="fn">use</span>(<span class="fn">helmet</span>());          <span class="cm">// security headers</span>
+app.<span class="fn">use</span>(<span class="fn">rateLimit</span>({         <span class="cm">// 100 req / 15 min per IP</span>
+  windowMs: <span class="num">15</span> * <span class="num">60</span> * <span class="num">1000</span>,
+  limit: <span class="num">100</span>
+}));
+app.<span class="fn">use</span>(<span class="fn">cors</span>());            <span class="cm">// allow frontend origin</span>
+app.<span class="fn">use</span>(express.<span class="fn">json</span>());   <span class="cm">// parse req.body</span>
+
+app.<span class="fn">use</span>(<span class="str">"/api/threads"</span>, threadRoutes);</pre>
+      </div>
+    </div>
+
+    <!-- Step 5 -->
+    <div class="step be-theme" onclick="toggle(this)">
+      <div class="step-header">
+        <div class="step-number">5</div>
+        <div>
+          <div class="step-title">authHandler verifies the JWT</div>
+          <div class="step-file">src/middleware/authHandler.js</div>
+        </div>
+        <div class="step-arrow">▼</div>
+      </div>
+      <div class="step-body">
+        <div class="step-desc">
+          The route <code>POST /api/threads</code> is defined as <code>router.post("/", authHandler, createThread)</code>,
+          so <code>authHandler</code> runs first. It extracts the token from the
+          <code>Authorization</code> header, verifies it with <code>jwt.verify()</code>, then looks up
+          the user in MongoDB to confirm they still exist. The user's <code>_id</code> is attached to
+          <code>req.user.userId</code> for the controller to use.
+        </div>
+        <div class="code-label">src/middleware/authHandler.js</div>
+        <pre><span class="kw">const</span> token = req.<span class="fn">header</span>(<span class="str">"Authorization"</span>)?.<span class="fn">replace</span>(<span class="str">"Bearer "</span>, <span class="str">""</span>);
+
+<span class="kw">if</span> (!token) <span class="kw">throw</span> <span class="fn">createAppError</span>(<span class="str">"No token provided"</span>, <span class="num">401</span>);
+
+<span class="kw">const</span> decoded = jwt.<span class="fn">verify</span>(token, process.env.<span class="prop">JWT_SECRET</span>);
+<span class="kw">const</span> user = <span class="kw">await</span> User.<span class="fn">findById</span>(decoded.userId).<span class="fn">select</span>(<span class="str">"-password"</span>);
+
+<span class="kw">if</span> (!user) <span class="kw">throw</span> <span class="fn">createAppError</span>(<span class="str">"User not found"</span>, <span class="num">401</span>);
+
+req.user = { userId: user._id }; <span class="cm">// passed to controller</span>
+<span class="fn">next</span>();                         <span class="cm">// hand off to createThread</span></pre>
+        <div class="error-note">
+          <strong>If token is missing or invalid:</strong> throws a 401 error → Express passes it to
+          <code>errorHandler</code> → returns <code>{ success: false, message: "..." }</code> → frontend's
+          <code>handleApiError()</code> clears localStorage and redirects to <code>/login</code>.
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 6 -->
+    <div class="step be-theme" onclick="toggle(this)">
+      <div class="step-header">
+        <div class="step-number">6</div>
+        <div>
+          <div class="step-title">Controller validates & delegates</div>
+          <div class="step-file">src/controllers/threadController.js — createThread()</div>
+        </div>
+        <div class="step-arrow">▼</div>
+      </div>
+      <div class="step-body">
+        <div class="step-desc">
+          The controller destructures <code>title</code>, <code>content</code>, <code>subreddit</code>
+          from <code>req.body</code>, and takes the author ID from <code>req.user.userId</code>
+          (set by <code>authHandler</code>). It does a presence check, then delegates to the service layer.
+        </div>
+        <div class="code-label">src/controllers/threadController.js:31–49</div>
+        <pre><span class="kw">export const</span> <span class="fn">createThread</span> = <span class="kw">async</span> (req, res) => {
+  <span class="kw">const</span> { title, content, subreddit } = req.body;
+  <span class="kw">const</span> author = req.user.userId; <span class="cm">// injected by authHandler</span>
+
+  <span class="kw">if</span> (!title || !content || !subreddit) {
+    <span class="kw">throw</span> <span class="fn">createAppError</span>(<span class="str">"Title, content, and subreddit are required."</span>, <span class="num">400</span>);
+  }
+
+  <span class="kw">const</span> populatedThread = <span class="kw">await</span> <span class="fn">createNewThread</span>(
+    title, content, author, subreddit
+  );
+
+  res.<span class="fn">status</span>(<span class="num">201</span>).<span class="fn">json</span>({
+    success: <span class="kw">true</span>,
+    message: <span class="str">"Thread created successfully"</span>,
+    data: populatedThread
+  });
+};</pre>
+      </div>
+    </div>
+
+    <!-- Step 7 -->
+    <div class="step db-theme" onclick="toggle(this)">
+      <div class="step-header">
+        <div class="step-number">7</div>
+        <div>
+          <div class="step-title">Service saves to MongoDB</div>
+          <div class="step-file">src/services/threadService.js — createNewThread()</div>
+        </div>
+        <div class="step-arrow">▼</div>
+      </div>
+      <div class="step-body">
+        <div class="step-desc">
+          The service creates a Mongoose <code>Thread</code> document and calls <code>.save()</code>.
+          MongoDB assigns a new <code>_id</code> and <code>createdAt</code> / <code>updatedAt</code>
+          timestamps. Then the service immediately re-fetches the saved document using
+          <code>.populate()</code> so the response includes the full <em>author name</em> and
+          <em>subreddit name</em> instead of raw ObjectId references.
+        </div>
+        <div class="code-label">src/services/threadService.js:27–40</div>
+        <pre><span class="kw">export const</span> <span class="fn">createNewThread</span> = <span class="kw">async</span> (title, content, author, subreddit) => {
+  <span class="kw">const</span> newThread = <span class="kw">new</span> <span class="fn">Thread</span>({ title, content, author, subreddit });
+  <span class="kw">await</span> newThread.<span class="fn">save</span>(); <span class="cm">// INSERT into MongoDB</span>
+
+  <span class="cm">// Re-fetch so we return full objects, not just IDs</span>
+  <span class="kw">const</span> populatedThread = <span class="kw">await</span> Thread.<span class="fn">findById</span>(newThread._id)
+    .<span class="fn">populate</span>({ path: <span class="str">"subreddit"</span>, select: <span class="str">"name description"</span> })
+    .<span class="fn">populate</span>({ path: <span class="str">"author"</span>, select: <span class="str">"name"</span> });
+
+  <span class="kw">if</span> (!populatedThread) <span class="kw">throw</span> <span class="fn">createAppError</span>(<span class="str">"Failed to create"</span>, <span class="num">500</span>);
+
+  <span class="kw">return</span> populatedThread;
+};</pre>
+        <div class="code-label">src/models/Thread.js — Mongoose schema</div>
+        <pre><span class="kw">const</span> ThreadSchema = <span class="kw">new</span> mongoose.<span class="fn">Schema</span>({
+  title:     { type: String, required: <span class="kw">true</span> },
+  content:   { type: String, required: <span class="kw">true</span> },
+  author:    { type: ObjectId, ref: <span class="str">"User"</span>, required: <span class="kw">true</span> },
+  subreddit: { type: ObjectId, ref: <span class="str">"Subreddit"</span>, required: <span class="kw">true</span> },
+  upvotes:   { type: Number, default: <span class="num">0</span> },
+  downvotes: { type: Number, default: <span class="num">0</span> },
+  voteCount: { type: Number, default: <span class="num">0</span> },
+  upvotedBy: [ObjectId], downvotedBy: [ObjectId]
+}, { timestamps: <span class="kw">true</span> });</pre>
+      </div>
+    </div>
+
+  </div><!-- end col-right -->
+</div><!-- end layout -->
+
+
+<!-- ═══════════════════ RETURN PATH ═══════════════════ -->
+<div class="return-section">
+  <div class="return-title">↩ Response travels back — 201 Created</div>
+
+  <div class="return-flow">
+
+    <div class="rf-box" style="background:#1a2744;border-color:var(--db);color:#c4b5fd;" onclick="toggleReturn('r1')">
+      <div style="font-size:0.65rem;color:var(--db);text-transform:uppercase;font-weight:800;letter-spacing:0.05em;">MongoDB</div>
+      Document saved<br>+ populated
+    </div>
+
+    <div class="rf-arrow">→</div>
+
+    <div class="rf-box" style="background:#1a2e26;border-color:var(--be);color:#6ee7b7;" onclick="toggleReturn('r2')">
+      <div style="font-size:0.65rem;color:var(--be);text-transform:uppercase;font-weight:800;letter-spacing:0.05em;">Controller</div>
+      res.status(201)<br>.json({ data })
+    </div>
+
+    <div class="rf-arrow">→</div>
+
+    <div class="rf-box" style="background:#2a2215;border-color:var(--net);color:#fcd34d;" onclick="toggleReturn('r3')">
+      <div style="font-size:0.65rem;color:var(--net);text-transform:uppercase;font-weight:800;letter-spacing:0.05em;">HTTP</div>
+      201 JSON<br>response body
+    </div>
+
+    <div class="rf-arrow">→</div>
+
+    <div class="rf-box" style="background:#1a2030;border-color:var(--fe);color:#93c5fd;" onclick="toggleReturn('r4')">
+      <div style="font-size:0.65rem;color:var(--fe);text-transform:uppercase;font-weight:800;letter-spacing:0.05em;">Axios</div>
+      res.data.data<br>returned
+    </div>
+
+    <div class="rf-arrow">→</div>
+
+    <div class="rf-box" style="background:#1a2030;border-color:var(--fe);color:#93c5fd;" onclick="toggleReturn('r5')">
+      <div style="font-size:0.65rem;color:var(--fe);text-transform:uppercase;font-weight:800;letter-spacing:0.05em;">Redux</div>
+      threads.unshift<br>(new thread)
+    </div>
+
+    <div class="rf-arrow">→</div>
+
+    <div class="rf-box" style="background:#1a2030;border-color:var(--fe);color:#93c5fd;" onclick="toggleReturn('r6')">
+      <div style="font-size:0.65rem;color:var(--fe);text-transform:uppercase;font-weight:800;letter-spacing:0.05em;">React UI</div>
+      New thread at<br>top · modal closed
+    </div>
+
+  </div>
+
+  <!-- Expandable detail panels -->
+  <div id="r1" style="display:none;margin-top:14px;">
+    <div class="code-label">MongoDB returns (after populate)</div>
+    <pre>{
+  <span class="prop">_id</span>: <span class="str">"684c1f2a..."</span>,
+  <span class="prop">title</span>: <span class="str">"My first thread"</span>,
+  <span class="prop">content</span>: <span class="str">"Here is the content..."</span>,
+  <span class="prop">author</span>: { <span class="prop">_id</span>: <span class="str">"..."</span>, <span class="prop">name</span>: <span class="str">"Alice"</span> },
+  <span class="prop">subreddit</span>: { <span class="prop">_id</span>: <span class="str">"..."</span>, <span class="prop">name</span>: <span class="str">"general"</span>, <span class="prop">description</span>: <span class="str">"..."</span> },
+  <span class="prop">upvotes</span>: <span class="num">0</span>, <span class="prop">downvotes</span>: <span class="num">0</span>, <span class="prop">voteCount</span>: <span class="num">0</span>,
+  <span class="prop">createdAt</span>: <span class="str">"2026-06-06T10:30:00.000Z"</span>,
+  <span class="prop">updatedAt</span>: <span class="str">"2026-06-06T10:30:00.000Z"</span>
+}</pre>
+  </div>
+
+  <div id="r2" style="display:none;margin-top:14px;">
+    <div class="code-label">HTTP Response — 201 Created</div>
+    <pre>{
+  <span class="prop">"success"</span>: <span class="kw">true</span>,
+  <span class="prop">"message"</span>: <span class="str">"Thread created successfully"</span>,
+  <span class="prop">"data"</span>: {
+    <span class="prop">"_id"</span>: <span class="str">"684c1f2a..."</span>,
+    <span class="prop">"title"</span>: <span class="str">"My first thread"</span>,
+    <span class="prop">"author"</span>: { <span class="prop">"name"</span>: <span class="str">"Alice"</span> },
+    <span class="prop">"subreddit"</span>: { <span class="prop">"name"</span>: <span class="str">"general"</span> },
+    <span class="prop">"upvotes"</span>: <span class="num">0</span>,
+    <span class="prop">"createdAt"</span>: <span class="str">"2026-06-06T10:30:00Z"</span>
+  }
+}</pre>
+  </div>
+
+  <div id="r3" style="display:none;margin-top:14px;">
+    <div class="code-label">Axios unwraps the response</div>
+    <pre><span class="cm">// axiosInstance.post() resolves with the axios response object</span>
+<span class="cm">// threadService.js extracts the nested "data" key:</span>
+<span class="kw">return</span> res.data.data; <span class="cm">// ← the Thread object directly</span></pre>
+  </div>
+
+  <div id="r4" style="display:none;margin-top:14px;">
+    <div class="code-label">Redux thunk resolves → reducer runs</div>
+    <pre><span class="cm">// createThreadThunk.fulfilled fires with the new thread as payload</span>
+.<span class="fn">addCase</span>(createThreadThunk.fulfilled, (state, action) => {
+  state.threads.<span class="fn">unshift</span>(action.payload); <span class="cm">// add to top of list</span>
+})</pre>
+  </div>
+
+  <div id="r5" style="display:none;margin-top:14px;">
+    <div class="code-label">Back in CreateThreadForm.jsx</div>
+    <pre><span class="kw">if</span> (<span class="fn">createThreadThunk.fulfilled.match</span>(resultAction)) {
+  <span class="fn">onClose</span>(); <span class="cm">// closes the modal / resets the form</span>
+}
+<span class="cm">// React re-renders because state.threads changed →</span>
+<span class="cm">// new thread appears at top of ThreadList</span></pre>
+  </div>
+
+  <div id="r6" style="display:none;margin-top:14px;">
+    <div class="code-label">What the user sees</div>
+    <pre><span class="cm">✓ Modal/form closes</span>
+<span class="cm">✓ New thread card appears instantly at the top of the feed</span>
+<span class="cm">  (no page refresh — Redux state update triggers re-render)</span>
+<span class="cm">✓ Thread shows author name and subreddit name (populated by MongoDB)</span></pre>
+  </div>
+
+</div><!-- end return-section -->
+
+
+<!-- ═══════════════════ ERROR PATH ═══════════════════ -->
+<div class="return-section" style="margin-top:16px;border-color:#7f1d1d;">
+  <div class="return-title" style="color:#fca5a5;">⚠ Error paths</div>
+
+  <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;flex-wrap:wrap;">
+
+    <div class="step err-theme" onclick="toggle(this)" style="margin-bottom:0">
+      <div class="step-header">
+        <div class="step-number">!</div>
+        <div>
+          <div class="step-title">401 — Token invalid</div>
+          <div class="step-file">authHandler.js</div>
+        </div>
+        <div class="step-arrow">▼</div>
+      </div>
+      <div class="step-body">
+        <div class="step-desc">
+          <code>jwt.verify()</code> throws or user not found in DB.
+          <code>createAppError("Token is not valid.", 401)</code> is thrown.
+          Express catches it via <code>errorHandler</code> and sends a 401 JSON response.
+          Frontend's <code>handleApiError()</code> detects the 401, clears
+          <code>localStorage</code>, and redirects to <code>/login</code>.
+        </div>
+      </div>
+    </div>
+
+    <div class="step err-theme" onclick="toggle(this)" style="margin-bottom:0">
+      <div class="step-header">
+        <div class="step-number">!</div>
+        <div>
+          <div class="step-title">400 — Missing fields</div>
+          <div class="step-file">threadController.js</div>
+        </div>
+        <div class="step-arrow">▼</div>
+      </div>
+      <div class="step-body">
+        <div class="step-desc">
+          Controller checks <code>if (!title || !content || !subreddit)</code>.
+          If any field is missing it throws a 400 error.
+          The frontend <code>createThreadThunk</code> catches this via
+          <code>rejectWithValue</code>, sets <code>state.error</code> in Redux,
+          and the form calls <code>alert("Failed to create thread.")</code>.
+        </div>
+      </div>
+    </div>
+
+    <div class="step err-theme" onclick="toggle(this)" style="margin-bottom:0">
+      <div class="step-header">
+        <div class="step-number">!</div>
+        <div>
+          <div class="step-title">429 — Rate limited</div>
+          <div class="step-file">app.js — express-rate-limit</div>
+        </div>
+        <div class="step-arrow">▼</div>
+      </div>
+      <div class="step-body">
+        <div class="step-desc">
+          If the same IP sends more than 100 requests in 15 minutes,
+          the rate limiter middleware rejects the request before it
+          reaches any route or authentication logic. Returns HTTP 429.
+          The frontend displays a generic error alert.
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+function toggle(el) {
+  el.classList.toggle('active');
+}
+function toggleReturn(id) {
+  const el = document.getElementById(id);
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+// Open first step by default for orientation
+document.querySelectorAll('.step')[0].classList.add('active');
+</script>
+</body>
+</html>
