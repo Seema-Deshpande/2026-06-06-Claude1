@@ -15,7 +15,7 @@ Handle errors gracefully — the UI should recover if the LLM call fails.
 ```
 Add a rephrase text feature where users can click a 'Rephrase with AI' button next to their input text to get an AI-improved version of their text. This feature should be available when creating a thread (for the title and body separately) and also when writing a comment on the Thread page.
 
-The rephrasing should happen on the backend by making a API call to Gemini. Use the gemini api dev skill to fetch the latest documentation on making these API calls. Ensure that the API client is created after the Gemini API key is loaded.
+The rephrasing should happen on the backend by making a API call to Gemini. Use the gemini api dev skill to fetch the latest documentation on making these API calls. Ensure that the API client is created after the Gemini API key is loaded.Use gemini-2.5-flash-lite , avoid budget issue is a priority
 
 Each field should have its own loading state. Do not directly replace the user's text with the rephrased text. Show the rephrased text and allow the user to accept or reject it. Only replace the original text if the user accepts the rephrased version. If the AI call fails the original text must stay intact (do not clear it).
 

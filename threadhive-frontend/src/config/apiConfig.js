@@ -14,6 +14,7 @@ export const THREAD_API = {
   CREATE: '/threads',
   UPVOTE: (id) => `/threads/${id}/upvote`,
   DOWNVOTE: (id) => `/threads/${id}/downvote`,
+  REPHRASE: '/threads/rephrase',
 };
 
 // Comment API Endpoints
@@ -22,6 +23,7 @@ export const COMMENT_API = {
   CREATE: '/comments',
   UPVOTE: (id) => `/comments/${id}/upvote`,
   DOWNVOTE: (id) => `/comments/${id}/downvote`,
+  REPHRASE: '/comments/rephrase',
 };
 
 // Subreddit API Endpoints

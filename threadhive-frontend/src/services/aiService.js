@@ -14,3 +14,12 @@ export const summarizeThread = async (threadId) => {
   );
   return res.data.data.summary;
 };
+
+export const rephraseText = async (text, endpoint) => {
+  const res = await axiosInstance.post(
+    endpoint,
+    { text },
+    { headers: getAuthHeaders() }
+  );
+  return res.data.data.rephrased;
+};

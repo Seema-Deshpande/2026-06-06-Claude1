@@ -4,8 +4,10 @@ import {
   createNewThread,
   updateThreadById,
   deleteThreadById,
+  summarizeThread as summarizeThreadAI,
+  rephraseText,
 } from "../services/threadService.js";
-import { createAppError } from "../utils/createAppError.js";
+import { createAppError, requireText } from "../utils/createAppError.js";
 
 // GET /api/threads
 export const getAllThreads = async (req, res) => {
@@ -67,5 +69,28 @@ export const deleteThread = async (req, res) => {
     success: true,
     message: "Thread deleted successfully",
     data: deletedThread,
+  });
+};
+
+// POST /api/threads/:id/summarize
+export const summarizeThread = async (req, res) => {
+  const thread = await fetchThreadById(req.params.id);
+  const summary = await summarizeThreadAI(thread);
+  res.status(200).json({
+    success: true,
+    message: "Summary generated successfully",
+    data: { summary },
+  });
+};
+
+// POST /api/threads/rephrase
+export const rephraseThread = async (req, res) => {
+  const { text } = req.body;
+  requireText(text);
+  const rephrased = await rephraseText(text);
+  res.status(200).json({
+    success: true,
+    message: "Text rephrased successfully",
+    data: { rephrased },
   });
 };

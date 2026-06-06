@@ -2,6 +2,7 @@ import Thread from "../models/Thread.js";
 import User from "../models/User.js";
 import Subreddit from "../models/Subreddit.js";
 import { createAppError } from "../utils/createAppError.js";
+import { GoogleGenAI } from "@google/genai";
 
 export const fetchAllThreads = async () => {
   const threads = await Thread.find()
@@ -60,4 +61,31 @@ export const deleteThreadById = async (id) => {
   }
 
   return deletedThread;
+};
+
+export const summarizeThread = async (thread) => {
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const prompt = `Summarize the following forum thread in 2-3 concise sentences. Capture the key points without omitting important details. Only use the title and content provided below — do not infer, speculate, or add any information not present in the text.
+
+Title: ${thread.title}
+
+Content: ${thread.content}`;
+  const response = await ai.models.generateContent({
+    model: "gemini-2.5-flash-lite",
+    contents: prompt,
+  });
+  return response.text;
+};
+
+export const rephraseText = async (text) => {
+  const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  const prompt = `Rephrase the following text to be clearer, more engaging, and better written. Keep the same meaning and intent. Return only the rephrased text — no explanations, no preamble.
+
+Text: ${text}`;
+  const response = await ai.models.generateContent({
+    model: "gemini-2.5-flash-lite",
+    contents: prompt,
+    config: { thinkingConfig: { thinkingBudget: 0 } },
+  });
+  return response.text;
 };
